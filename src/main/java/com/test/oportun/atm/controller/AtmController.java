@@ -1,10 +1,12 @@
 package com.test.oportun.atm.controller;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.test.oportun.atm.repo.AtmRecordRepository;
 import com.test.oportun.atm.model.AtmRecord;
@@ -56,17 +58,29 @@ public class AtmController {
             //Fetch the current data from the DB
             final ArrayList<AtmRecord> arrDBAtmRecords = (ArrayList<AtmRecord>) atmRecordRepository
                     .findAll(Sort.by(Sort.Direction.DESC, "_id"));
-            LinkedHashMap<Integer, AtmRecord> lhMapDBAtmRecords = convertToLhMap(arrDBAtmRecords);
+            LinkedHashMap<Integer, AtmRecord> lhMapDBAtmRecords;
 
-            //Add the input denomination quantities to the existing values.
-            for (final Integer i : hmInAtmRecords.keySet()) {
-                final int intAvlQuantity = lhMapDBAtmRecords.get(i).getQuantity();
-                final int intIncrQuantity = hmInAtmRecords.get(i);
-                lhMapDBAtmRecords.get(i).setQuantity(intAvlQuantity + intIncrQuantity);
-            }
+//            Map<Integer, AtmRecord> lhMapDBAtmRecords = arrDBAtmRecords.stream()
+//            															.collect(Collectors.toMap(AtmRecord::getDenomination, AtmRecord));
+//            //Add the input denomination quantities to the existing values.
+//            for (final Integer i : hmInAtmRecords.keySet()) {
+//                final int intAvlQuantity = lhMapDBAtmRecords.get(i).getQuantity();
+//                final int intIncrQuantity = hmInAtmRecords.get(i);
+//                lhMapDBAtmRecords.get(i).setQuantity(intAvlQuantity + intIncrQuantity);
+//            }
+            
+            ArrayList<AtmRecord> arrUpdDBAtmRecord = arrDBAtmRecords.stream()
+            			.filter(dbAtmRecord -> hmInAtmRecords.get(dbAtmRecord.getDenomination()) != null)
+            			.map(dbAtmRecord -> 
+            						{ 
+	            						dbAtmRecord.setQuantity(dbAtmRecord.getQuantity() 
+	            												+ hmInAtmRecords.get(dbAtmRecord.getDenomination()));
+	            						return dbAtmRecord;
+            						})
+            			.collect(Collectors.toCollection(ArrayList::new));
 
             //Update the database with the incremented values
-            lhMapDBAtmRecords = convertToLhMap((ArrayList<AtmRecord>) atmRecordRepository.saveAll(arrDBAtmRecords));
+            lhMapDBAtmRecords = convertToLhMap((ArrayList<AtmRecord>) atmRecordRepository.saveAll(arrUpdDBAtmRecord));
 
             //Fetch the total balance
             int totalBalance = calculateTotalBalance(lhMapDBAtmRecords);
@@ -82,15 +96,13 @@ public class AtmController {
      * @param lhMapDBAtmRecords Hashmap containing the denomination-wise quantities
      * @return Total available balance 
      */
-    private int calculateTotalBalance(LinkedHashMap<Integer, AtmRecord> lhMapDBAtmRecords) {
-        Iterator<Integer> i = lhMapDBAtmRecords.keySet().iterator();
-        int totalBalance = 0;
-        AtmRecord tmpAtmRecord = null;
-        while(i.hasNext()) {
-            tmpAtmRecord = lhMapDBAtmRecords.get(i.next());
-            totalBalance += tmpAtmRecord.getDenomination() * tmpAtmRecord.getQuantity();
-        }
-        return totalBalance;
+    private int calculateTotalBalance(Map<Integer, AtmRecord> lhMapDBAtmRecords) {
+
+    	return lhMapDBAtmRecords
+    				.values().stream()
+					.map(atmRecord -> {return atmRecord.getDenomination() * atmRecord.getQuantity();})
+					.collect(Collectors.summingInt(Integer::intValue));
+
     }
 
     /**
@@ -99,29 +111,15 @@ public class AtmController {
      * @return Contains the error description, in case there is one
      */
     private String validateDepositInput(Map<Integer, Integer> hmInAtmRecords) {
-        String strError = null;
-        boolean blnZeroDeposit = true;
-        boolean blnNegativeDenomination = false;
-        Iterator<Integer> i = hmInAtmRecords.keySet().iterator();
+
+    	String strError = null;
+
+        if(hmInAtmRecords.values().stream().noneMatch((quantity) -> quantity > 0)) {
+        	strError = "Deposit amount cannot be zero";
+        } else if (hmInAtmRecords.values().stream().anyMatch((quantity) -> quantity < 0)) {
+                strError = "Incorrect deposit amount";
+        }
         
-        while(i.hasNext()) {
-            int tmpDenom = hmInAtmRecords.get(i.next());
-            if(tmpDenom < 0) {
-                blnNegativeDenomination = true;
-            }
-            if(tmpDenom > 0) {
-                blnZeroDeposit = false;
-            }
-        }
-
-        if(blnZeroDeposit) {
-            strError = "Deposit amount cannot be zero";
-        }
-
-        if(blnNegativeDenomination) {
-            strError = "Incorrect deposit amount";
-        }
-
         return strError;
     }
 
@@ -230,7 +228,7 @@ public class AtmController {
      * @param lhMapDBAtmRecords Contains the appropriate error message, if there is any
      * @return
      */
-    private String validateWithdrawal(Integer intCashRequest, LinkedHashMap<Integer, AtmRecord> lhMapDBAtmRecords) {
+    private String validateWithdrawal(Integer intCashRequest, Map<Integer, AtmRecord> lhMapDBAtmRecords) {
         
         String strError = null;
         int totalBalance = calculateTotalBalance(lhMapDBAtmRecords);
@@ -259,10 +257,10 @@ public class AtmController {
      */
     private LinkedHashMap<Integer, AtmRecord> convertToLhMap(final ArrayList<AtmRecord> arrAtmRecords) {
 
-        final LinkedHashMap<Integer, AtmRecord> lhMap = new LinkedHashMap<Integer, AtmRecord>();
-        for (final AtmRecord a : arrAtmRecords) {
-			lhMap.put(a.getDenomination(), a);
-		}
-		return lhMap;
+    	return arrAtmRecords.stream().sorted(Comparator.comparing(AtmRecord::getDenomination).reversed())
+    						.collect(Collectors.toMap(AtmRecord::getDenomination, 
+    													atmRecord -> atmRecord, 
+    													(e1, e2) -> e1, 
+    													LinkedHashMap::new));
 	}
 }
