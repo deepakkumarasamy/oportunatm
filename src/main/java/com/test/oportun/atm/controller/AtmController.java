@@ -59,15 +59,6 @@ public class AtmController {
             final ArrayList<AtmRecord> arrDBAtmRecords = (ArrayList<AtmRecord>) atmRecordRepository
                     .findAll(Sort.by(Sort.Direction.DESC, "_id"));
             LinkedHashMap<Integer, AtmRecord> lhMapDBAtmRecords;
-
-//            Map<Integer, AtmRecord> lhMapDBAtmRecords = arrDBAtmRecords.stream()
-//            															.collect(Collectors.toMap(AtmRecord::getDenomination, AtmRecord));
-//            //Add the input denomination quantities to the existing values.
-//            for (final Integer i : hmInAtmRecords.keySet()) {
-//                final int intAvlQuantity = lhMapDBAtmRecords.get(i).getQuantity();
-//                final int intIncrQuantity = hmInAtmRecords.get(i);
-//                lhMapDBAtmRecords.get(i).setQuantity(intAvlQuantity + intIncrQuantity);
-//            }
             
             ArrayList<AtmRecord> arrUpdDBAtmRecord = arrDBAtmRecords.stream()
             			.filter(dbAtmRecord -> hmInAtmRecords.get(dbAtmRecord.getDenomination()) != null)
